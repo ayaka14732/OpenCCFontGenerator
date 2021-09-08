@@ -1,0 +1,7 @@
+build
+dist
+*.egg-info
+.mypy_cache
+
+/src/OpenCCFontGenerator/cache
+/src/OpenCCFontGenerator/opencc_data
