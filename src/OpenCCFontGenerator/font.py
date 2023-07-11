@@ -113,7 +113,7 @@ def build_codepoints_font(obj):
 def build_codepoints_non_han():
     '''Build a set of codepoints of the needed non-Han characters in the final font.'''
     return set(chain(
-        range(0x0020, 0x007E + 1),
+        range(0x0020, 0x00FF + 1),
         range(0x02B0, 0x02FF + 1),
         range(0x2002, 0x203B + 1),
         range(0x2E00, 0x2E7F + 1),
