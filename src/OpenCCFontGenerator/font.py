@@ -123,12 +123,13 @@ def build_opencc_char_table(codepoints_font, twp=False):
     entries = []
     twp_suffix = '_twp' if twp else ''
 
-    with (DATA_DIR / f'convert_table_chars{twp_suffix}.txt').open() as f:
+    with (DATA_DIR / f'convert_table_chars{twp_suffix}.txt').open(encoding='utf-8') as f:
         for line in f:
             k, v = line.rstrip('\n').split('\t')
             codepoint_k = ord(k)
             codepoint_v = ord(v)
-            if codepoint_k in codepoints_font and codepoint_v in codepoints_font:  # TODO FIXME: codepoint_k in codepoints_font should be unnecessary
+            # Source and target glyphs must both exist in the input font.
+            if codepoint_k in codepoints_font and codepoint_v in codepoints_font:
                 entries.append((codepoint_k, codepoint_v))
 
     return entries
@@ -137,12 +138,12 @@ def build_opencc_word_table(codepoints_font, twp=False):
     entries = []
     twp_suffix = '_twp' if twp else ''
 
-    with (DATA_DIR / f'convert_table_words{twp_suffix}.txt').open() as f:
+    with (DATA_DIR / f'convert_table_words{twp_suffix}.txt').open(encoding='utf-8') as f:
         for line in f:
             k, v = line.rstrip('\n').split('\t')
             codepoints_k = tuple(ord(c) for c in k)
             codepoints_v = tuple(ord(c) for c in v)
-            # TODO FIXME: The first condition should be unnecessary.
+            # Every source and target glyph must exist in the input font.
             if all(codepoint in codepoints_font for codepoint in codepoints_k) and all(codepoint in codepoints_font for codepoint in codepoints_v):
                 entries.append((codepoints_k, codepoints_v))
 
