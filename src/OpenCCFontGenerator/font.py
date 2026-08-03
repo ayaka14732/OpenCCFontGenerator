@@ -6,7 +6,7 @@ import json
 from os import path
 import subprocess
 
-from .data import CACHE_DIR, prepare_data
+from .data import DATA_DIR, verify_data
 
 HERE = path.abspath(path.dirname(__file__))
 
@@ -91,7 +91,7 @@ def get_glyph_count(obj):
 
 def build_codepoints_han():
     '''Build a set of codepoints of Han characters to be included.'''
-    with (CACHE_DIR / 'code_points_han.txt').open() as f:
+    with (DATA_DIR / 'code_points_han.txt').open() as f:
         s = set()
         for line in f:
             s.add(int(line))
@@ -123,7 +123,7 @@ def build_opencc_char_table(codepoints_font, twp=False):
     entries = []
     twp_suffix = '_twp' if twp else ''
 
-    with (CACHE_DIR / f'convert_table_chars{twp_suffix}.txt').open() as f:
+    with (DATA_DIR / f'convert_table_chars{twp_suffix}.txt').open() as f:
         for line in f:
             k, v = line.rstrip('\n').split('\t')
             codepoint_k = ord(k)
@@ -137,7 +137,7 @@ def build_opencc_word_table(codepoints_font, twp=False):
     entries = []
     twp_suffix = '_twp' if twp else ''
 
-    with (CACHE_DIR / f'convert_table_words{twp_suffix}.txt').open() as f:
+    with (DATA_DIR / f'convert_table_words{twp_suffix}.txt').open() as f:
         for line in f:
             k, v = line.rstrip('\n').split('\t')
             codepoints_k = tuple(ord(c) for c in k)
@@ -336,7 +336,7 @@ def modify_metadata(obj, name_header_file, font_version: Decimal):
     obj['name'] = name_header
 
 def build_font(input_file, output_file, name_header_file, font_version, ttc_index=None, twp=False):
-    prepare_data()
+    verify_data()
     font = load_font(input_file, ttc_index=ttc_index)
 
     # Determine the final Unicode range by the original font and OpenCC convert tables

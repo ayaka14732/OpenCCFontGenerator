@@ -1,0 +1,8 @@
+[build-system]
+requires = [
+    "setuptools",
+    "wheel",
+    "opencc-py==1.4.1",
+    "opencc-data==1.4.1",
+]
+build-backend = "setuptools.build_meta"
