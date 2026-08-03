@@ -175,12 +175,13 @@ def remove_codepoint(obj, codepoint):
     codepoint = str(codepoint)
 
     glyph_name = obj['cmap'].get(codepoint)
-    if not glyph_name:
-        return  # The codepoint is not associated with a glyph name. No action is needed
+    if glyph_name:
+        disassociate_codepoint_and_glyph_name(obj, codepoint, glyph_name)
 
-    is_only_item = disassociate_codepoint_and_glyph_name(obj, codepoint, glyph_name)
-    if is_only_item:
-        remove_glyph(obj, glyph_name)
+    variation_sequence_prefix = f'{codepoint} '
+    for variation_sequence in list(obj.get('cmap_uvs', {})):
+        if variation_sequence.startswith(variation_sequence_prefix):
+            del obj['cmap_uvs'][variation_sequence]
 
 def remove_codepoints(obj, codepoints):
     '''Remove a sequence of codepoints from a font object.'''
@@ -207,6 +208,11 @@ def remove_glyph(obj, glyph_name):
     # Remove glyph from glyf table
     del obj['glyf'][glyph_name]
 
+    # Remove glyph from cmap variation sequences
+    for variation_sequence, variation_glyph_name in list(obj.get('cmap_uvs', {}).items()):
+        if variation_glyph_name == glyph_name:
+            del obj['cmap_uvs'][variation_sequence]
+
     # Remove glyph from GSUB table
     for lookup in obj['GSUB']['lookups'].values():
         if lookup['type'] == 'gsub_single':  # {a: b}
@@ -214,7 +220,7 @@ def remove_glyph(obj, glyph_name):
                 for k, v in list(subtable.items()):
                     if glyph_name == k or glyph_name == v:
                         del subtable[k]
-        elif lookup['type'] == 'gsub_alternate':  # {a: [b1, b2, ...]}
+        elif lookup['type'] in ('gsub_multiple', 'gsub_alternate'):  # {a: [b1, b2, ...]}
             for subtable in lookup['subtables']:
                 for k, v in list(subtable.items()):
                     if glyph_name == k or glyph_name in v:
@@ -224,6 +230,10 @@ def remove_glyph(obj, glyph_name):
                 def predicate(item):
                     return glyph_name not in item['from'] and glyph_name != item['to']
                 subtable['substitutions'][:] = filter(predicate, subtable['substitutions'])
+        elif lookup['type'] == 'gsub_chaining':
+            for subtable in lookup['subtables']:
+                for coverage in subtable['match']:
+                    coverage[:] = [candidate for candidate in coverage if candidate != glyph_name]
         else:
             raise NotImplementedError('Unknown GSUB lookup type')
 
@@ -237,39 +247,48 @@ def remove_glyph(obj, glyph_name):
             for subtable in lookup['subtables']:
                 subtable['first'].pop(glyph_name, None)
                 subtable['second'].pop(glyph_name, None)
+        elif lookup['type'] == 'gpos_chaining':
+            for subtable in lookup['subtables']:
+                for coverage in subtable['match']:
+                    coverage[:] = [candidate for candidate in coverage if candidate != glyph_name]
         else:
             raise NotImplementedError('Unknown GPOS lookup type')
 
 def get_reachable_glyphs(obj):
     '''Get all the reachable glyphs of a font object.'''
-    reachable_glyphs = {'.notdef', '.null'}
+    reachable_glyphs = {'.notdef', '.null', *obj['cmap'].values(), *obj.get('cmap_uvs', {}).values()}
 
-    for glyph_name in obj['cmap'].values():
-        # Add the glyph in cmap table
-        reachable_glyphs.add(glyph_name)
+    while True:
+        previous_count = len(reachable_glyphs)
+        for glyph_name in tuple(reachable_glyphs):
+            glyph = obj['glyf'].get(glyph_name)
+            if glyph:
+                reachable_glyphs.update(reference['glyph'] for reference in glyph.get('references', ()))
 
-        # Add the glyphs referenced by the glyph in cmap table
         for lookup in obj['GSUB']['lookups'].values():
             if lookup['type'] == 'gsub_single':  # {a: b}
                 for subtable in lookup['subtables']:
                     for k, v in subtable.items():
-                        if glyph_name == k:
+                        if k in reachable_glyphs:
                             reachable_glyphs.add(v)
-            elif lookup['type'] == 'gsub_alternate':  # {a: [b1, b2, ...]}
+            elif lookup['type'] in ('gsub_multiple', 'gsub_alternate'):  # {a: [b1, b2, ...]}
                 for subtable in lookup['subtables']:
                     for k, vs in subtable.items():
-                        if glyph_name == k:
+                        if k in reachable_glyphs:
                             reachable_glyphs.update(vs)
             # {from: [a1, a2, ...], to: b}
             elif lookup['type'] == 'gsub_ligature':
                 for subtable in lookup['subtables']:
                     for item in subtable['substitutions']:
-                        if glyph_name in item['from']:
+                        if all(glyph_name in reachable_glyphs for glyph_name in item['from']):
                             reachable_glyphs.add(item['to'])
+            elif lookup['type'] == 'gsub_chaining':
+                pass
             else:
                 raise NotImplementedError('Unknown GSUB lookup type')
 
-    return reachable_glyphs
+        if len(reachable_glyphs) == previous_count:
+            return reachable_glyphs
 
 def clean_unused_glyphs(obj):
     reachable_glyphs = get_reachable_glyphs(obj)
@@ -277,6 +296,53 @@ def clean_unused_glyphs(obj):
     for glyph_name in all_glyphs - reachable_glyphs:
         remove_associated_codepoints_of_glyph(obj, glyph_name)
         remove_glyph(obj, glyph_name)
+
+def is_layout_subtable_empty(lookup, subtable):
+    '''Return whether otfcc would discard a layout subtable as empty.'''
+    if lookup['type'] == 'gsub_ligature':
+        return not subtable['substitutions']
+    if lookup['type'] in ('gsub_chaining', 'gpos_chaining'):
+        return any(not coverage for coverage in subtable['match'])
+    if lookup['type'] == 'gpos_pair':
+        # An empty second class still represents the default class 0.
+        return not subtable['first']
+    return not subtable
+
+def clean_empty_layout_tables(obj):
+    '''Remove empty layout subtables, lookups, features, and references.'''
+    for table_name in ('GSUB', 'GPOS'):
+        table = obj[table_name]
+        while True:
+            lookup_names = set(table['lookups'])
+            empty_lookup_names = set()
+            for lookup_name, lookup in table['lookups'].items():
+                retained_subtables = []
+                for subtable in lookup['subtables']:
+                    invalid_applications = False
+                    if lookup['type'] in ('gsub_chaining', 'gpos_chaining') and subtable['apply']:
+                        subtable['apply'][:] = [application for application in subtable['apply'] if application['lookup'] in lookup_names]
+                        invalid_applications = not subtable['apply']
+                    if not invalid_applications and not is_layout_subtable_empty(lookup, subtable):
+                        retained_subtables.append(subtable)
+                lookup['subtables'][:] = retained_subtables
+                if not lookup['subtables']:
+                    empty_lookup_names.add(lookup_name)
+
+            if not empty_lookup_names:
+                break
+            for lookup_name in empty_lookup_names:
+                del table['lookups'][lookup_name]
+
+        lookup_names = set(table['lookups'])
+        table['lookupOrder'][:] = [lookup_name for lookup_name in table['lookupOrder'] if lookup_name in lookup_names]
+        for lookup_names in table['features'].values():
+            lookup_names[:] = [lookup_name for lookup_name in lookup_names if lookup_name in table['lookups']]
+
+        empty_feature_names = {feature_name for feature_name, lookup_names in table['features'].items() if not lookup_names}
+        for feature_name in empty_feature_names:
+            del table['features'][feature_name]
+        for language in table['languages'].values():
+            language['features'][:] = [feature_name for feature_name in language['features'] if feature_name not in empty_feature_names]
 
 def insert_empty_feature(obj, feature_name):
     for table in obj['GSUB']['languages'].values():
@@ -327,8 +393,16 @@ def build_name_header(name_header_file, style, version, date):
 
     return name_header
 
+def get_font_style(obj):
+    '''Get the typographic or legacy subfamily name of a font.'''
+    for name_id in (17, 2):
+        for item in obj['name']:
+            if item['nameID'] == name_id:
+                return item['nameString']
+    raise ValueError('The font has no subfamily name')
+
 def modify_metadata(obj, name_header_file, font_version: Decimal):
-    style = next(item['nameString'] for item in obj['name'] if item['nameID'] == 17)
+    style = get_font_style(obj)
     today = date.today().strftime('%b %d, %Y')
 
     name_header = build_name_header(name_header_file, style, str(font_version), today)
@@ -378,6 +452,7 @@ def build_font(input_file, output_file, name_header_file, font_version, ttc_inde
     create_word2pseu_table(font, feature_name, word2pseu_table)
     create_char2char_table(font, feature_name, char2char_table)
     create_pseu2word_table(font, feature_name, pseu2word_table)
+    clean_empty_layout_tables(font)
 
     modify_metadata(font, name_header_file, font_version)
     save_font(font, output_file)
