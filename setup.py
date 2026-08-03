@@ -29,7 +29,7 @@ setup(
     package_data={'OpenCCFontGenerator': ['*.json', '*.txt']},
     include_package_data=True,
     python_requires='>=3.14',
-    install_requires=['opencc-py==1.4.1'],
+    install_requires=['opencc-py==1.4.1', 'opencc-data==1.4.1'],
     project_urls={
         'Bug Reports': 'https://github.com/ayaka14732/OpenCCFontGenerator/issues',
         'Source': 'https://github.com/ayaka14732/OpenCCFontGenerator',

@@ -6,7 +6,7 @@ import json
 from os import path
 import subprocess
 
-from .data import prepare_data
+from .data import CACHE_DIR, prepare_data
 
 HERE = path.abspath(path.dirname(__file__))
 
@@ -70,8 +70,11 @@ def load_font(path, ttc_index=None):
 
 def save_font(obj, path):
     '''Save a font object to file.'''
-    del obj['cmap_rev']
-    subprocess.run(('otfccbuild', '-o', path), input=json.dumps(obj), encoding='utf-8', check=True)
+    cmap_rev = obj.pop('cmap_rev')
+    try:
+        subprocess.run(('otfccbuild', '-o', path), input=json.dumps(obj), encoding='utf-8', check=True)
+    finally:
+        obj['cmap_rev'] = cmap_rev
 
 def codepoint_to_glyph_name(obj, codepoint):
     '''Convert a codepoint to a glyph name in a font.'''
@@ -88,7 +91,7 @@ def get_glyph_count(obj):
 
 def build_codepoints_han():
     '''Build a set of codepoints of Han characters to be included.'''
-    with open(path.join(HERE, 'cache/code_points_han.txt')) as f:
+    with (CACHE_DIR / 'code_points_han.txt').open() as f:
         s = set()
         for line in f:
             s.add(int(line))
@@ -120,7 +123,7 @@ def build_opencc_char_table(codepoints_font, twp=False):
     entries = []
     twp_suffix = '_twp' if twp else ''
 
-    with open(path.join(HERE, f'cache/convert_table_chars{twp_suffix}.txt')) as f:
+    with (CACHE_DIR / f'convert_table_chars{twp_suffix}.txt').open() as f:
         for line in f:
             k, v = line.rstrip('\n').split('\t')
             codepoint_k = ord(k)
@@ -134,7 +137,7 @@ def build_opencc_word_table(codepoints_font, twp=False):
     entries = []
     twp_suffix = '_twp' if twp else ''
 
-    with open(path.join(HERE, f'cache/convert_table_words{twp_suffix}.txt')) as f:
+    with (CACHE_DIR / f'convert_table_words{twp_suffix}.txt').open() as f:
         for line in f:
             k, v = line.rstrip('\n').split('\t')
             codepoints_k = tuple(ord(c) for c in k)

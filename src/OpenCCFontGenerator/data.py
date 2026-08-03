@@ -1,5 +1,6 @@
 from importlib.metadata import version
 from itertools import chain
+from os import environ
 from pathlib import Path
 from urllib.request import urlretrieve
 
@@ -7,6 +8,8 @@ import opencc_data
 from opencc import OpenCC
 
 HERE = Path(__file__).resolve().parent
+DEFAULT_CACHE_HOME = Path(environ.get('XDG_CACHE_HOME', Path.home() / '.cache'))
+CACHE_DIR = Path(environ.get('OPENCCFONTGENERATOR_CACHE_DIR', DEFAULT_CACHE_HOME / 'OpenCCFontGenerator')).expanduser()
 OPENCC_DATA_VERSION = '1.4.1'
 CACHE_SCHEMA_VERSION = 4
 CACHE_VERSION = f'opencc-data-{OPENCC_DATA_VERSION}-schema-{CACHE_SCHEMA_VERSION}'
@@ -60,23 +63,23 @@ def iter_extra_conversions():
             yield line.split('\t', 1)
 
 def cache_is_current():
-    marker = HERE / 'cache' / 'version.txt'
+    marker = CACHE_DIR / 'version.txt'
     try:
         if marker.read_text(encoding='utf-8').strip() != CACHE_VERSION:
             return False
     except FileNotFoundError:
         return False
-    required_files = [HERE / 'cache' / filename for filename in CACHE_FILENAMES]
-    required_files.append(HERE / 'cache' / '通用規範漢字表.txt')
+    required_files = [CACHE_DIR / filename for filename in CACHE_FILENAMES]
+    required_files.append(CACHE_DIR / '通用規範漢字表.txt')
     return all(filename.is_file() for filename in required_files)
 
 def download_data():
-    (HERE / 'cache').mkdir(exist_ok=True)
-    urlretrieve(TONGYONG_URL, HERE / 'cache' / '通用規範漢字表.txt')
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    urlretrieve(TONGYONG_URL, CACHE_DIR / '通用規範漢字表.txt')
 
 def write_table(filename, entries):
     entries = sorted(entries.items(), key=lambda item: (len(item[0]), item[0]), reverse=True)
-    with (HERE / 'cache' / filename).open('w', encoding='utf-8') as output:
+    with (CACHE_DIR / filename).open('w', encoding='utf-8') as output:
         for key, value in entries:
             print(key, value, sep='\t', file=output)
 
@@ -108,7 +111,7 @@ def build_convert_tables():
 
 def build_codepoints():
     codepoints = set()
-    with (HERE / 'cache' / '通用規範漢字表.txt').open(encoding='utf-8') as table:
+    with (CACHE_DIR / '通用規範漢字表.txt').open(encoding='utf-8') as table:
         for line in table:
             if line and not line.startswith('#'):
                 codepoints.add(ord(line[0]))
@@ -116,7 +119,7 @@ def build_codepoints():
         codepoints.update(ord(character) for character in key)
         codepoints.update(ord(character) for candidate in candidates.split(' ') for character in candidate)
     codepoints.update(ord(character) for character in '妳攞噉㗎冚喺冇哋啲嘢啱佢嘅咁嚟屌咗撚噏瞓𡃁嘥掹孭氹詏噃𨳍掟埞曱甴𥄫𨳊嚿閪冧嬲卌嗻𧨾')
-    with (HERE / 'cache' / 'code_points_han.txt').open('w', encoding='utf-8') as output:
+    with (CACHE_DIR / 'code_points_han.txt').open('w', encoding='utf-8') as output:
         for codepoint in sorted(codepoints):
             if codepoint > 128:
                 print(codepoint, file=output)
@@ -130,4 +133,4 @@ def prepare_data():
     download_data()
     build_convert_tables()
     build_codepoints()
-    (HERE / 'cache' / 'version.txt').write_text(CACHE_VERSION + '\n', encoding='utf-8')
+    (CACHE_DIR / 'version.txt').write_text(CACHE_VERSION + '\n', encoding='utf-8')
