@@ -1,0 +1,5 @@
+include build_data.py
+include src/OpenCCFontGenerator/extra_convert_table.txt
+include src/OpenCCFontGenerator/t2twp.json
+prune src/OpenCCFontGenerator/cache
+prune src/OpenCCFontGenerator/opencc_data

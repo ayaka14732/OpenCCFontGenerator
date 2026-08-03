@@ -1,1 +1,2 @@
-opencc<1.2
+opencc-py==1.4.1
+opencc-data==1.4.1

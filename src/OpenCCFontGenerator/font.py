@@ -1,9 +1,12 @@
 from collections import defaultdict
 from datetime import date
+from decimal import Decimal
 from itertools import chain, groupby
 import json
 from os import path
 import subprocess
+
+from .data import DATA_DIR, verify_data
 
 HERE = path.abspath(path.dirname(__file__))
 
@@ -13,7 +16,6 @@ HERE = path.abspath(path.dirname(__file__))
 SUBTABLE_MAX_COUNT = 4000
 
 # The following two functions are used to split a GSUB table into several subtables.
-
 
 def grouper(iterable, n=SUBTABLE_MAX_COUNT):
     '''
@@ -35,7 +37,6 @@ def grouper(iterable, n=SUBTABLE_MAX_COUNT):
             break
         yield lst
 
-
 def grouper2(iterable, n=SUBTABLE_MAX_COUNT, key=None):
     '''
     Split a iterator into chunks of maximum size n by the given key.
@@ -48,13 +49,11 @@ def grouper2(iterable, n=SUBTABLE_MAX_COUNT, key=None):
         for vs in grouper(vx, n):
             yield vs
 
-
 # An opentype font can hold at most 65535 glyphs.
 MAX_GLYPH_COUNT = 65535
 
 # Here we are going to add a special key, cmap_rev, to the font object.
 # This key is the reverse mapping of the cmap table and will be used in next steps.
-
 
 def build_cmap_rev(obj):
     cmap_rev = defaultdict(list)
@@ -62,53 +61,45 @@ def build_cmap_rev(obj):
         cmap_rev[glyph_name].append(codepoint)
     return cmap_rev
 
-
 def load_font(path, ttc_index=None):
     '''Load a font as a JSON object.'''
     ttc_index_args = () if ttc_index is None else ('--ttc-index', str(ttc_index))
-    obj = json.loads(subprocess.check_output(
-        ('otfccdump', path, *ttc_index_args)))
+    obj = json.loads(subprocess.check_output(('otfccdump', path, *ttc_index_args)))
     obj['cmap_rev'] = build_cmap_rev(obj)
     return obj
 
-
 def save_font(obj, path):
     '''Save a font object to file.'''
-    del obj['cmap_rev']
-    subprocess.run(('otfccbuild', '-o', path),
-                   input=json.dumps(obj), encoding='utf-8')
-
+    cmap_rev = obj.pop('cmap_rev')
+    try:
+        subprocess.run(('otfccbuild', '-o', path), input=json.dumps(obj), encoding='utf-8', check=True)
+    finally:
+        obj['cmap_rev'] = cmap_rev
 
 def codepoint_to_glyph_name(obj, codepoint):
     '''Convert a codepoint to a glyph name in a font.'''
     return obj['cmap'][str(codepoint)]
 
-
 def insert_empty_glyph(obj, name):
     '''Insert an empty glyph to a font with the given name.'''
-    obj['glyf'][name] = {'advanceWidth': 0,
-                         'advanceHeight': 1000, 'verticalOrigin': 880}
+    obj['glyf'][name] = {'advanceWidth': 0, 'advanceHeight': 1000, 'verticalOrigin': 880}
     obj['glyph_order'].append(name)
-
 
 def get_glyph_count(obj):
     '''Get the total numbers of glyph in a font.'''
     return len(obj['glyph_order'])
 
-
 def build_codepoints_han():
     '''Build a set of codepoints of Han characters to be included.'''
-    with open(path.join(HERE, 'cache/code_points_han.txt')) as f:
+    with (DATA_DIR / 'code_points_han.txt').open() as f:
         s = set()
         for line in f:
             s.add(int(line))
         return s
 
-
 def build_codepoints_font(obj):
     '''Build a set of all the codepoints in a font.'''
     return set(map(int, obj['cmap']))
-
 
 def build_codepoints_non_han():
     '''Build a set of codepoints of the needed non-Han characters in the final font.'''
@@ -128,39 +119,35 @@ def build_codepoints_non_han():
         range(0xFF61, 0xFF64 + 1),
     ))
 
-
 def build_opencc_char_table(codepoints_font, twp=False):
     entries = []
     twp_suffix = '_twp' if twp else ''
 
-    with open(path.join(HERE, f'cache/convert_table_chars{twp_suffix}.txt')) as f:
+    with (DATA_DIR / f'convert_table_chars{twp_suffix}.txt').open() as f:
         for line in f:
             k, v = line.rstrip('\n').split('\t')
             codepoint_k = ord(k)
             codepoint_v = ord(v)
-            if codepoint_k in codepoints_font \
-                    and codepoint_v in codepoints_font:  # TODO FIXME: codepoint_k in codepoints_font should be unnecessary
+            if codepoint_k in codepoints_font and codepoint_v in codepoints_font:  # TODO FIXME: codepoint_k in codepoints_font should be unnecessary
                 entries.append((codepoint_k, codepoint_v))
 
     return entries
-
 
 def build_opencc_word_table(codepoints_font, twp=False):
     entries = []
     twp_suffix = '_twp' if twp else ''
 
-    with open(path.join(HERE, f'cache/convert_table_words{twp_suffix}.txt')) as f:
+    with (DATA_DIR / f'convert_table_words{twp_suffix}.txt').open() as f:
         for line in f:
             k, v = line.rstrip('\n').split('\t')
             codepoints_k = tuple(ord(c) for c in k)
             codepoints_v = tuple(ord(c) for c in v)
-            if all(codepoint in codepoints_font for codepoint in codepoints_k) \
-                    and all(codepoint in codepoints_font for codepoint in codepoints_v):  # TODO FIXME: the first line should be unnecessary
+            # TODO FIXME: The first condition should be unnecessary.
+            if all(codepoint in codepoints_font for codepoint in codepoints_k) and all(codepoint in codepoints_font for codepoint in codepoints_v):
                 entries.append((codepoints_k, codepoints_v))
 
     # The entries are already Sorted from longest to shortest to force longest match
     return entries
-
 
 def disassociate_codepoint_and_glyph_name(obj, codepoint, glyph_name):
     '''
@@ -182,7 +169,6 @@ def disassociate_codepoint_and_glyph_name(obj, codepoint, glyph_name):
 
     return is_only_item
 
-
 def remove_codepoint(obj, codepoint):
     '''Remove a codepoint from a font object.'''
     codepoint = str(codepoint)
@@ -191,17 +177,14 @@ def remove_codepoint(obj, codepoint):
     if not glyph_name:
         return  # The codepoint is not associated with a glyph name. No action is needed
 
-    is_only_item = disassociate_codepoint_and_glyph_name(
-        obj, codepoint, glyph_name)
+    is_only_item = disassociate_codepoint_and_glyph_name(obj, codepoint, glyph_name)
     if is_only_item:
         remove_glyph(obj, glyph_name)
-
 
 def remove_codepoints(obj, codepoints):
     '''Remove a sequence of codepoints from a font object.'''
     for codepoint in codepoints:
         remove_codepoint(obj, codepoint)
-
 
 def remove_associated_codepoints_of_glyph(obj, glyph_name):
     '''Remove a glyph from the cmap table of a font object.'''
@@ -211,7 +194,6 @@ def remove_associated_codepoints_of_glyph(obj, glyph_name):
 
     # Remove glyph from cmap_rev
     del obj['cmap_rev'][glyph_name]
-
 
 def remove_glyph(obj, glyph_name):
     '''Remove a glyph from all the tables except the cmap table of a font object.'''
@@ -238,10 +220,9 @@ def remove_glyph(obj, glyph_name):
                         del subtable[k]
         elif lookup['type'] == 'gsub_ligature':  # {from: [a1, a2, ...], to: b}
             for subtable in lookup['subtables']:
-                def predicate(
-                    item): return glyph_name not in item['from'] and glyph_name != item['to']
-                subtable['substitutions'][:] = filter(
-                    predicate, subtable['substitutions'])
+                def predicate(item):
+                    return glyph_name not in item['from'] and glyph_name != item['to']
+                subtable['substitutions'][:] = filter(predicate, subtable['substitutions'])
         else:
             raise NotImplementedError('Unknown GSUB lookup type')
 
@@ -257,7 +238,6 @@ def remove_glyph(obj, glyph_name):
                 subtable['second'].pop(glyph_name, None)
         else:
             raise NotImplementedError('Unknown GPOS lookup type')
-
 
 def get_reachable_glyphs(obj):
     '''Get all the reachable glyphs of a font object.'''
@@ -290,7 +270,6 @@ def get_reachable_glyphs(obj):
 
     return reachable_glyphs
 
-
 def clean_unused_glyphs(obj):
     reachable_glyphs = get_reachable_glyphs(obj)
     all_glyphs = set(obj['glyph_order'])
@@ -298,17 +277,17 @@ def clean_unused_glyphs(obj):
         remove_associated_codepoints_of_glyph(obj, glyph_name)
         remove_glyph(obj, glyph_name)
 
-
 def insert_empty_feature(obj, feature_name):
     for table in obj['GSUB']['languages'].values():
         table['features'].append(feature_name)
     obj['GSUB']['features'][feature_name] = []
 
-
 def create_word2pseu_table(obj, feature_name, conversions):
     def conversion_item_len(conversion_item): return len(conversion_item[0])
-    subtables = [{'substitutions': [{'from': glyph_names_k, 'to': pseudo_glyph_name} for glyph_names_k, pseudo_glyph_name in subtable]}
-                 for subtable in grouper2(conversions, key=conversion_item_len)]  # {from: [a1, a2, ...], to: b}
+    subtables = [
+        {'substitutions': [{'from': glyph_names_k, 'to': pseudo_glyph_name} for glyph_names_k, pseudo_glyph_name in subtable]}
+        for subtable in grouper2(conversions, key=conversion_item_len)
+    ]  # {from: [a1, a2, ...], to: b}
     obj['GSUB']['features'][feature_name].append('word2pseu')
     obj['GSUB']['lookups']['word2pseu'] = {
         'type': 'gsub_ligature',
@@ -317,10 +296,8 @@ def create_word2pseu_table(obj, feature_name, conversions):
     }
     obj['GSUB']['lookupOrder'].append('word2pseu')
 
-
 def create_char2char_table(obj, feature_name, conversions):
-    subtables = [{k: v for k, v in subtable}
-                 for subtable in grouper(conversions)]
+    subtables = [{k: v for k, v in subtable} for subtable in grouper(conversions)]
     obj['GSUB']['features'][feature_name].append('char2char')
     obj['GSUB']['lookups']['char2char'] = {
         'type': 'gsub_single',
@@ -329,11 +306,9 @@ def create_char2char_table(obj, feature_name, conversions):
     }
     obj['GSUB']['lookupOrder'].append('char2char')
 
-
 def create_pseu2word_table(obj, feature_name, conversions):
     def conversion_item_len(conversion_item): return len(conversion_item[1])
-    subtables = [{k: v for k, v in subtable}
-                 for subtable in grouper2(conversions, key=conversion_item_len)]
+    subtables = [{k: v for k, v in subtable} for subtable in grouper2(conversions, key=conversion_item_len)]
     obj['GSUB']['features'][feature_name].append('pseu2word')
     obj['GSUB']['lookups']['pseu2word'] = {
         'type': 'gsub_multiple',
@@ -342,33 +317,26 @@ def create_pseu2word_table(obj, feature_name, conversions):
     }
     obj['GSUB']['lookupOrder'].append('pseu2word')
 
-
 def build_name_header(name_header_file, style, version, date):
     with open(name_header_file) as f:
         name_header = json.load(f)
 
     for item in name_header:
-        item['nameString'] = item['nameString'] \
-            .replace('<Typographic Subfamily Name>', style) \
-            .replace('<Version>', version) \
-            .replace('<Date>', date)
+        item['nameString'] = item['nameString'].replace('<Typographic Subfamily Name>', style).replace('<Version>', version).replace('<Date>', date)
 
     return name_header
 
-
-def modify_metadata(obj, name_header_file, font_version: float):
-    style = next(item['nameString']
-                 for item in obj['name'] if item['nameID'] == 17)
+def modify_metadata(obj, name_header_file, font_version: Decimal):
+    style = next(item['nameString'] for item in obj['name'] if item['nameID'] == 17)
     today = date.today().strftime('%b %d, %Y')
 
-    name_header = build_name_header(
-        name_header_file, style, str(font_version), today)
+    name_header = build_name_header(name_header_file, style, str(font_version), today)
 
-    obj['head']['fontRevision'] = font_version
+    obj['head']['fontRevision'] = float(font_version)
     obj['name'] = name_header
 
-
 def build_font(input_file, output_file, name_header_file, font_version, ttc_index=None, twp=False):
+    verify_data()
     font = load_font(input_file, ttc_index=ttc_index)
 
     # Determine the final Unicode range by the original font and OpenCC convert tables
@@ -377,27 +345,24 @@ def build_font(input_file, output_file, name_header_file, font_version, ttc_inde
     entries_char = build_opencc_char_table(codepoints_font, twp=twp)
     entries_word = build_opencc_word_table(codepoints_font, twp=twp)
 
-    codepoints_final = (build_codepoints_non_han() |
-                        build_codepoints_han()) & codepoints_font
+    codepoints_final = (build_codepoints_non_han() | build_codepoints_han()) & codepoints_font
 
     remove_codepoints(font, codepoints_font - codepoints_final)
     clean_unused_glyphs(font)
 
+    # Build glyph substitution tables and insert into font
+
     available_glyph_count = MAX_GLYPH_COUNT - get_glyph_count(font)
     assert available_glyph_count >= len(entries_word)
-
-    # Build glyph substitution tables and insert into font
 
     word2pseu_table = []
     char2char_table = []
     pseu2word_table = []
 
-    for i, (codepoints_k, codepoints_v) in enumerate(entries_word):
-        pseudo_glyph_name = 'pseu%X' % i
-        glyph_names_k = [codepoint_to_glyph_name(
-            font, codepoint) for codepoint in codepoints_k]
-        glyph_names_v = [codepoint_to_glyph_name(
-            font, codepoint) for codepoint in codepoints_v]
+    for index, (codepoints_k, codepoints_v) in enumerate(entries_word):
+        pseudo_glyph_name = 'pseu%X' % index
+        glyph_names_k = [codepoint_to_glyph_name(font, codepoint) for codepoint in codepoints_k]
+        glyph_names_v = [codepoint_to_glyph_name(font, codepoint) for codepoint in codepoints_v]
         insert_empty_glyph(font, pseudo_glyph_name)
         word2pseu_table.append((glyph_names_k, pseudo_glyph_name))
         pseu2word_table.append((pseudo_glyph_name, glyph_names_v))
