@@ -123,7 +123,7 @@ def build_opencc_char_table(codepoints_font, twp=False):
     entries = []
     twp_suffix = '_twp' if twp else ''
 
-    with (DATA_DIR / f'convert_table_chars{twp_suffix}.txt').open() as f:
+    with (DATA_DIR / f'convert_table_chars{twp_suffix}.txt').open(encoding='utf-8') as f:
         for line in f:
             k, v = line.rstrip('\n').split('\t')
             codepoint_k = ord(k)
@@ -138,7 +138,7 @@ def build_opencc_word_table(codepoints_font, twp=False):
     entries = []
     twp_suffix = '_twp' if twp else ''
 
-    with (DATA_DIR / f'convert_table_words{twp_suffix}.txt').open() as f:
+    with (DATA_DIR / f'convert_table_words{twp_suffix}.txt').open(encoding='utf-8') as f:
         for line in f:
             k, v = line.rstrip('\n').split('\t')
             codepoints_k = tuple(ord(c) for c in k)
