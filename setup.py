@@ -34,6 +34,7 @@ setup(
     url='https://github.com/ayaka14732/OpenCCFontGenerator',
     author='ayaka14732',
     author_email='ayaka@mail.shn.hk',
+    license='MIT',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',

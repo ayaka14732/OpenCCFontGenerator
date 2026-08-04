@@ -1,17 +1,25 @@
 # OpenCC Font Generator
 
-OpenCC Font Generator turns OpenCC's forward maximum-matching conversions into OpenType GSUB substitutions. Words are first replaced by pseudo-glyphs, characters are then converted, and the pseudo-glyphs are finally expanded to the converted words.
-
-The generator currently uses [`nk2028/opencc-data` 1.4.1](https://github.com/nk2028/opencc-data/releases/tag/1.4.1) through the matching [`opencc-py` 1.4.1](https://pypi.org/project/opencc-py/1.4.1/) implementation and requires Python 3.14 or newer. Conversion tables and required code points are generated while building the wheel and bundled into it, so installed copies neither access the network nor write runtime caches.
-
-Taiwan conversion preserves the project's original flat `t2twp` algorithm. Standard Simplified-to-Traditional results are converted through `t2twp`; Taiwan dictionary keys are also recovered through `t2s`; then every phrase is merged into one longest-match GSUB lookup. This covers fully Simplified inputs such as `卷积` → `摺積` and `吃茶小铺` → `喫茶小舖`.
+OpenCC Font Generator creates OpenType fonts that display Simplified Chinese text as Traditional Chinese, including context-sensitive conversions where one Simplified character may have several Traditional forms. It can also generate a Taiwan variant with Taiwanese phrases and character forms.
 
 ## Usage
 
-Install `otfccdump` and `otfccbuild`, then install this project and run:
+Install Python 3.14 or later and make sure `otfccdump` and `otfccbuild` are available in `PATH`. Then install OpenCC Font Generator:
+
+```console
+python -m pip install git+https://github.com/ayaka14732/OpenCCFontGenerator.git
+```
+
+Prepare a JSON file containing the output font's name records. The [Fan Wun Ming configuration](https://github.com/ayaka14732/FanWunMing/blob/main/config/name.json) can be used as an example.
+
+Generate a font with:
 
 ```console
 python -m OpenCCFontGenerator --input-file source.ttc --ttc-index 0 --output-file output.ttf --name-header-file name.json --font-version 2.100
 ```
 
-Add `--twp` to use Taiwan phrases and variants.
+Omit `--ttc-index` when the source is not a TrueType Collection. Add `--twp` to use Taiwanese phrases and variants.
+
+## Design Principles
+
+A conversion font changes how text is displayed without changing the underlying text. The design is described in [_Correctly Implement a Simplified-Chinese-To-Traditional-Chinese Font_](https://ayaka.shn.hk/s2tfont/hant/).
