@@ -454,5 +454,7 @@ def build_font(input_file, output_file, name_header_file, font_version, ttc_inde
     create_pseu2word_table(font, feature_name, pseu2word_table)
     clean_empty_layout_tables(font)
 
+    # Complete GBK retention would exceed the OpenType glyph limit, so advertise code page 936 while retaining the original GB2312 repertoire.
+    font['OS_2']['ulCodePageRange1']['gbk'] = True
     modify_metadata(font, name_header_file, font_version)
     save_font(font, output_file)
