@@ -447,7 +447,7 @@ def build_font(input_file, output_file, name_header_file, font_version, ttc_inde
         glyph_name_v = codepoint_to_glyph_name(font, codepoint_v)
         char2char_table.append((glyph_name_k, glyph_name_v))
 
-    feature_name = 'liga_s2t'
+    feature_name = 'rlig_s2t'
     insert_empty_feature(font, feature_name)
     create_word2pseu_table(font, feature_name, word2pseu_table)
     create_char2char_table(font, feature_name, char2char_table)
