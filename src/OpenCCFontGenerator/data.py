@@ -2,7 +2,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 DATA_DIR = HERE / 'generated'
-DATA_VERSION = 'opencc-data-1.4.1-schema-5'
+DATA_VERSION = 'opencc-data-1.4.1-schema-6'
 DATA_FILENAMES = (
     'convert_table_words.txt',
     'convert_table_chars.txt',

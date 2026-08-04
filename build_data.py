@@ -9,7 +9,7 @@ from opencc import OpenCC
 HERE = Path(__file__).resolve().parent
 PACKAGE_DIR = HERE / 'src' / 'OpenCCFontGenerator'
 OPENCC_DATA_VERSION = '1.4.1'
-DATA_SCHEMA_VERSION = 5
+DATA_SCHEMA_VERSION = 6
 DATA_VERSION = f'opencc-data-{OPENCC_DATA_VERSION}-schema-{DATA_SCHEMA_VERSION}'
 OPENCC_DATA_FILENAMES = (
     'CJK_Compatibility_Ideographs.txt',
@@ -42,8 +42,10 @@ GENERATED_FILENAMES = (
     'convert_table_chars_twp.txt',
     'code_points_han.txt',
     'version.txt',
+    'GB2312.txt',
     '通用規範漢字表.txt',
 )
+GB2312_URL = 'https://raw.githubusercontent.com/rime-aca/character_set/71f9b23810e7bc23f2e71d07a36bc4f8c86bced5/GB2312.txt'
 TONGYONG_URL = 'https://raw.githubusercontent.com/rime-aca/character_set/e7d009a8a185a83f62ad2c903565b8bb85719221/%E9%80%9A%E7%94%A8%E8%A6%8F%E7%AF%84%E6%BC%A2%E5%AD%97%E8%A1%A8.txt'
 
 def iter_dictionary(filename):
@@ -96,14 +98,16 @@ def build_convert_tables(output_dir):
 
 def build_codepoints(output_dir):
     codepoints = set()
-    with (output_dir / '通用規範漢字表.txt').open(encoding='utf-8') as table:
-        for line in table:
-            if line and not line.startswith('#'):
-                codepoints.add(ord(line[0]))
+    for filename in ('通用規範漢字表.txt', 'GB2312.txt'):
+        with (output_dir / filename).open(encoding='utf-8') as table:
+            for line in table:
+                line = line.strip()
+                if len(line) == 1:
+                    codepoints.add(ord(line))
     for key, candidates in chain.from_iterable(iter_dictionary(filename) for filename in OPENCC_DATA_FILENAMES):
         codepoints.update(ord(character) for character in key)
         codepoints.update(ord(character) for candidate in candidates.split(' ') for character in candidate)
-    codepoints.update(ord(character) for character in '妳攞噉㗎冚喺冇哋啲嘢啱佢嘅咁嚟屌咗撚噏瞓𡃁嘥掹孭氹詏噃𨳍掟埞曱甴𥄫𨳊嚿閪冧嬲卌嗻𧨾')
+    codepoints.update(ord(character) for character in '妳攞噉㗎冚喺冇哋啲嘢啱佢嘅咁嚟屌咗撚噏瞓𡃁嘥掹孭氹詏噃𨳍掟埞曱甴𥄫𨳊嚿閪冧卌嗻𧨾')
     with (output_dir / 'code_points_han.txt').open('w', encoding='utf-8') as output:
         for codepoint in sorted(codepoints):
             if codepoint > 128:
@@ -114,6 +118,7 @@ def build_data(output_dir):
     if installed_version != OPENCC_DATA_VERSION:
         raise RuntimeError(f'opencc-data {OPENCC_DATA_VERSION} is required, found {installed_version}')
     output_dir.mkdir(parents=True, exist_ok=True)
+    urlretrieve(GB2312_URL, output_dir / 'GB2312.txt')
     urlretrieve(TONGYONG_URL, output_dir / '通用規範漢字表.txt')
     build_convert_tables(output_dir)
     build_codepoints(output_dir)
